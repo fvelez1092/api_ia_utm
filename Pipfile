@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+requests = "*"
+flask = "*"
+flask-jwt-extended = "*"
+flask-bcrypt = "*"
+flask-sqlalchemy = "*"
+flask-cors = "*"
+marshmallow = "*"
+bcrypt = "==4.1.1"
+psycopg2 = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
