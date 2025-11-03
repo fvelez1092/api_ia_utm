@@ -21,13 +21,13 @@ class config(object):
 
     # Configuración Ollama
     OLLAMA_HOST = environ.get("OLLAMA_HOST", "http://localhost:11434")
-    OLLAMA_MODEL = environ.get("OLLAMA_MODEL", "model-elaia-mistral")
+    OLLAMA_MODEL = environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
     EMBEDDING_MODEL = environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 
     # Configuración de documentos
     UPLOAD_FOLDER = environ.get("UPLOAD_FOLDER", "./uploads")
     ALLOWED_EXTENSIONS = {"pdf"}
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 20 * 1024 * 1024
 
 
 class DevelopmentConfig(config):

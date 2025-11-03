@@ -13,6 +13,12 @@ flask-cors = "*"
 marshmallow = "*"
 bcrypt = "==4.1.1"
 psycopg2 = "*"
+langchain-ollama = "*"
+chromadb = "*"
+langchain-chroma = "*"
+pdfplumber = "*"
+langchain = "*"
+langchain-community = "*"
 
 [dev-packages]
 
