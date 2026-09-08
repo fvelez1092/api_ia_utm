@@ -10,15 +10,17 @@ flask-jwt-extended = "*"
 flask-bcrypt = "*"
 flask-sqlalchemy = "*"
 flask-cors = "*"
+flask-limiter = "*"
 marshmallow = "*"
 bcrypt = "==4.1.1"
-psycopg2 = "*"
+psycopg2-binary = "*"
 langchain-ollama = "*"
 chromadb = "*"
 langchain-chroma = "*"
 pdfplumber = "*"
 langchain = "*"
 langchain-community = "*"
+gunicorn = "*"
 
 [dev-packages]
 

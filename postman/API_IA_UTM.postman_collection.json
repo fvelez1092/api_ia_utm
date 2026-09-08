@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "API IA UTM",
+    "description": "Pruebas de autenticación, roles, documentos y RAG.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Estado del servicio",
+      "request": {"method": "GET", "url": "{{base_url}}/"},
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Servicio disponible', () => pm.response.to.have.status(200));", "pm.test('Estado healthy', () => pm.expect(pm.response.json().data.status).to.eql('healthy'));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "02 - Login administrador",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}"},
+        "url": "{{base_url}}/auth/login"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Login correcto', () => pm.response.to.have.status(200));", "const json = pm.response.json();", "pm.environment.set('admin_token', json.data.auth.access_token);", "pm.test('Rol administrador', () => pm.expect(json.data.auth.role).to.eql('admin'));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "03 - Crear usuario",
+      "request": {
+        "method": "POST",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"username\": \"{{user_username}}\",\n  \"password\": \"{{user_password}}\",\n  \"role\": \"user\"\n}"},
+        "url": "{{base_url}}/user/"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Creado o ya existente', () => pm.expect([201, 409]).to.include(pm.response.code));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "04 - Login usuario",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"username\": \"{{user_username}}\",\n  \"password\": \"{{user_password}}\"\n}"},
+        "url": "{{base_url}}/auth/login"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Login correcto', () => pm.response.to.have.status(200));", "const json = pm.response.json();", "pm.environment.set('user_token', json.data.auth.access_token);", "pm.test('Rol user', () => pm.expect(json.data.auth.role).to.eql('user'));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "05 - Usuario no puede administrar",
+      "request": {
+        "method": "GET",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "url": "{{base_url}}/user/"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Acceso denegado', () => pm.response.to.have.status(403));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "06 - Subir PDF como administrador",
+      "request": {
+        "method": "POST",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+        "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}]},
+        "url": "{{base_url}}/document/",
+        "description": "Seleccione manualmente un PDF antes de enviar."
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Procesado o duplicado', () => pm.expect([201, 409]).to.include(pm.response.code));", "const json = pm.response.json();", "const name = json.data && (json.data.filename || (json.data.data && json.data.data.filename));", "if (name) pm.environment.set('document_name', name);"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "07 - Listar documentos",
+      "request": {
+        "method": "GET",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "url": "{{base_url}}/document/?page=1&per_page=10"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Listado correcto', () => pm.response.to.have.status(200));", "const docs = pm.response.json().data.documents;", "if (docs.length) pm.environment.set('document_name', docs[0].filename);"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "08 - Ver documento",
+      "request": {
+        "method": "GET",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "url": "{{base_url}}/document/view?name={{document_name}}"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('PDF disponible', () => pm.response.to.have.status(200));", "pm.test('Contenido PDF', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf'));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "09 - Saludo RAG",
+      "request": {
+        "method": "POST",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"question\": \"Hola\"\n}"},
+        "url": "{{base_url}}/rag/ask"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Saludo correcto', () => pm.response.to.have.status(200));", "pm.test('Sin fuentes', () => pm.expect(pm.response.json().data.sources).to.be.empty);"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "10 - Consultar documentos con RAG",
+      "request": {
+        "method": "POST",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"question\": \"¿Cuál es el tema principal del documento?\",\n  \"n_context\": 5,\n  \"use_scores\": true,\n  \"score_threshold\": 0.8\n}"},
+        "url": "{{base_url}}/rag/ask"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Consulta completada', () => pm.response.to.have.status(200));", "pm.test('Incluye respuesta', () => pm.expect(pm.response.json().data.answer).to.be.a('string'));"], "type": "text/javascript"}}]
+    },
+    {
+      "name": "11 - Cerrar sesión",
+      "request": {
+        "method": "DELETE",
+        "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
+        "url": "{{base_url}}/auth/logout"
+      },
+      "event": [{"listen": "test", "script": {"exec": ["pm.test('Sesión cerrada', () => pm.response.to.have.status(200));"], "type": "text/javascript"}}]
+    }
+  ]
+}

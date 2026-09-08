@@ -1,5 +1,12 @@
 documents_uploads/
 chroma_db/
+uploads/*
+!uploads/.gitkeep
+secrets/
+app/static/*.pem
+app/static/*.pub
+.DS_Store
+.vscode/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

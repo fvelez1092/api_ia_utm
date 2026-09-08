@@ -1,188 +1,84 @@
-# from app.utils.response import create_response
-# from flask import Blueprint, request
-# from app.services.document_service import DocumentService
-# from app.extensions import logger_app
+from flask import Blueprint, current_app, request, send_from_directory
+from flask_jwt_extended import jwt_required
 
-# document_blueprint = Blueprint("Document", __name__, url_prefix="/document")
-# document_service = DocumentService()
-
-
-# @document_blueprint.route("/", methods=["POST"])
-# def upload_document():
-#     if "file" not in request.files:
-#         return create_response("error", {"message": "No file part"}, 400)
-
-#     file = request.files["file"]
-#     if file.filename == "":
-#         return create_response("error", {"message": "No selected file"}, 400)
-
-#     try:
-#         result = document_service.upload_and_vectorize(file)
-#         if result["status"] == "duplicate":
-#             return create_response("error", result, 409, result["message"])
-#         return create_response("success", result, 201)
-#     except Exception as e:
-#         logger_app.error(f"Error en carga de documento: {str(e)}")
-#         return create_response("error", {"message": str(e)}, 500, str(e))
-
-
-# @document_blueprint.route("/", methods=["GET"])
-# def list_documents():
-#     try:
-#         page = int(request.args.get("page", 1))
-#         per_page = int(request.args.get("per_page", 10))
-#         if page < 1 or per_page < 1:
-#             return create_response("error", {"message": "Parámetros inválidos"}, 400)
-
-#         result = document_service.list_documents(page, per_page)
-#         return create_response("success", result, 200)
-#     except Exception as e:
-#         logger_app.error(f"Error al listar documentos: {str(e)}")
-#         return create_response("error", {"message": str(e)}, 500, str(e))
-from flask import (
-    Blueprint,
-    request,
-    current_app,
-    send_from_directory,
-    abort,
-)  # Añadir `current_app` para acceder a la configuración de Flask
-from werkzeug.utils import secure_filename, safe_join  # Agregar esta importación
-from app.utils.response import create_response
-from app.services.embedding_service import EmbeddingService
+from app.extensions import limiter, logger_app
 from app.services.chroma_service import ChromaService
 from app.services.document_service import DocumentService
-from app.extensions import logger_app
-import os
+from app.utils.auth import admin_required
+from app.utils.response import create_response
 
-# Crear el servicio de documentos
-document_service = DocumentService()
 
-# Crear blueprint
 document_blueprint = Blueprint("Document", __name__, url_prefix="/document")
 
 
-@document_blueprint.route("/", methods=["POST"])
+def _service():
+    if "document_service" not in current_app.extensions:
+        if "chroma_service" not in current_app.extensions:
+            current_app.extensions["chroma_service"] = ChromaService(
+                persist_directory=current_app.config["CHROMA_PATH"],
+                collection_name=current_app.config["COLLECTION_NAME"],
+                embedding_model=current_app.config["EMBEDDING_MODEL"],
+                ollama_host=current_app.config["OLLAMA_HOST"],
+            )
+        current_app.extensions["document_service"] = DocumentService(
+            upload_folder=current_app.config["UPLOAD_FOLDER"],
+            chroma_service=current_app.extensions["chroma_service"],
+        )
+    return current_app.extensions["document_service"]
+
+
+@document_blueprint.post("/")
+@limiter.limit("10 per hour")
+@admin_required()
 def upload_document():
-    """
-    Sube un archivo y lo vectoriza (indexa en Chroma).
-    Requisitos:
-      - Campo 'file' en multipart/form-data
-      - Solo PDF (mimetype y extensión)
-      - Tamaño máx: MAX_UPLOAD_MB
-    Respuestas:
-      - 201 success: { status, id, filename, chunks, message }
-      - 409 duplicate
-      - 400 error de validación
-      - 500 error interno
-    """
-    try:
-        # Validar que sea multipart/form-data con 'file'
-        if "file" not in request.files:
-            return create_response(
-                "error", {"message": "Se requiere el campo 'file'."}, 400
-            )
-
-        # Límite de tamaño (obteniendo de la configuración de Flask)
-        content_len = request.content_length or 0
-        max_content_length = current_app.config.get(
-            "MAX_CONTENT_LENGTH", 16 * 1024 * 1024
-        )  # 16 MB por defecto
-
-        if content_len > 0 and content_len > max_content_length:
-            return create_response(
-                "error",
-                {
-                    "message": f"El archivo excede el límite de {max_content_length / (1024 * 1024)} MB."
-                },
-                413,
-                f"Tamaño: {content_len} bytes",
-            )
-
-        file = request.files["file"]
-
-        # Nombre de archivo
-        if not file or file.filename == "":
-            return create_response(
-                "error", {"message": "No se seleccionó archivo."}, 400
-            )
-
-        filename = secure_filename(
-            file.filename
-        )  # Usar secure_filename para sanear el nombre del archivo
-
-        # Validaciones de extensión y mimetype
-        if not filename.lower().endswith(".pdf"):
-            return create_response(
-                "error",
-                {"message": "Extensión no permitida. Solo se aceptan archivos .pdf"},
-                400,
-            )
-
-        # Algunos navegadores pueden enviar mimetype genérico; validamos si está disponible
-        if file.mimetype and file.mimetype != "application/pdf":
-            logger_app.warning(
-                f"[Document] Mimetype no estándar: {file.mimetype} para '{filename}'"
-            )
-
-        logger_app.info(
-            f"[Document] Subiendo '{filename}' (Content-Length={content_len} bytes)"
-        )
-
-        # Delegar al servicio (debe gestionar duplicados y vectorización)
-        result = document_service.upload_and_vectorize(file, original_filename=filename)
-
-        # Convención: el servicio devuelve {"status": "duplicate", "message": "..."} para duplicados
-        if isinstance(result, dict) and result.get("status") == "duplicate":
-            logger_app.info(f"[Document] Duplicado detectado: {filename} -> 409")
-            return create_response("error", result, 409, result.get("message"))
-
-        # Éxito
-        return create_response("success", result, 201)
-
-    except Exception as e:
-        logger_app.error(f"Error en carga de documento: {e}", exc_info=True)
+    if "file" not in request.files or not request.files["file"].filename:
         return create_response(
-            "error", {"message": "Error interno al procesar el documento."}, 500, str(e)
+            "error", message="Se requiere un archivo en el campo 'file'.", status_code=400
         )
 
+    file = request.files["file"]
+    try:
+        result = _service().upload_and_vectorize(file, file.filename)
+    except ValueError as error:
+        return create_response("error", message=str(error), status_code=400)
+    except Exception:
+        logger_app.exception("Error al procesar el documento")
+        return create_response(
+            "error", message="No se pudo procesar el documento.", status_code=500
+        )
 
-@document_blueprint.route("/", methods=["GET"])
+    if result["status"] == "duplicate":
+        return create_response("error", data=result, message=result["message"], status_code=409)
+    return create_response("success", data=result, status_code=201)
+
+
+@document_blueprint.get("/")
+@jwt_required()
 def list_documents():
     try:
         page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 10))
-        if page < 1 or per_page < 1:
-            return create_response("error", {"message": "Parámetros inválidos"}, 400)
+        per_page = min(int(request.args.get("per_page", 10)), 100)
+    except (TypeError, ValueError):
+        return create_response("error", message="Paginación inválida.", status_code=400)
+    if page < 1 or per_page < 1:
+        return create_response("error", message="Paginación inválida.", status_code=400)
+    return create_response(
+        "success", data=_service().list_documents(page, per_page), status_code=200
+    )
 
-        result = document_service.list_documents(page, per_page)
-        return create_response("success", result, 200)
-    except Exception as e:
-        logger_app.error(f"Error al listar documentos: {str(e)}")
-        return create_response("error", {"message": str(e)}, 500, str(e))
 
-
-@document_blueprint.route("/view", methods=["GET"])
+@document_blueprint.get("/view")
+@jwt_required()
 def view_document():
-    name = request.args.get("name")
-    if not name:
-        return create_response("error", {"message": "Falta el parámetro 'name'."}, 400)
-
-    # lista blanca: sólo archivos realmente en el directorio
-    files = set(os.listdir(document_service.pdfs_directory))
-    if name not in files:
-        return create_response("error", {"message": "Documento no encontrado."}, 404)
-
-    # safe join para evitar path traversal
-    safe_path = safe_join(document_service.pdfs_directory, name)
-    if not safe_path or not os.path.isfile(safe_path):
-        return create_response("error", {"message": "Ruta inválida."}, 400)
-
-    # servir como PDF inline
+    name = request.args.get("name", "")
+    path = _service().resolve_document(name)
+    if path is None:
+        return create_response("error", message="Documento no encontrado.", status_code=404)
     return send_from_directory(
-        directory=document_service.pdfs_directory,
-        path=name,
+        directory=str(path.parent),
+        path=path.name,
         mimetype="application/pdf",
         as_attachment=False,
         conditional=True,
-        max_age=0,  # desactiva cache si prefieres
+        max_age=0,
     )

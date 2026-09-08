@@ -1,159 +1,98 @@
-# Template_API-flask
-Plantilla para la creación y posterior desarrollo de APIs REST en Flask (Python).
+# API IA UTM
 
-## Indice
+API Flask para cargar documentos PDF, indexarlos en ChromaDB y responder preguntas mediante un modelo local de Ollama.
 
-* [Creación de un Entorno Virtual](#creación-de-un-entorno-virtual)
-  * [Opciones de creación de entornos virtuales](#opciones-de-creación-de-entornos-virtuales)
-* [Variables de Entorno](#variables-de-entorno)
-  * [Ejemplo de un archivo .env](#ejemplo-de-un-archivo-.env)
-* [Generación de Par de Claves (Privada y Pública)](#generación-de-par-de-claves-(privada-y-pública))
-  * [Generar una clave RSA de 2048 bits](#generar-una-clave-RSA-de-2048-bits)
-  * [Exportar la clave pública RSA a un archivo](#exportar-la-clave-pública-RSA-a-un-archivo)
-* [Despliegue del API](#despliegue-del-api)
+## Requisitos
 
-## Creación de un Entorno Virtual
+- Python 3.11
+- PostgreSQL
+- Ollama
+- Pipenv
 
-Para crear un entorno virtual usando pipenv, siga estos pasos:
+## Preparación local
 
-Instale pipenv si aún no lo ha hecho:
-```pip install pipenv```
-
-Cree un directorio para su proyecto:
-```
-mkdir my_project
-cd my_project
+```bash
+cp .env.example .env
+./scripts/generate_jwt_keys.sh
+pipenv sync
 ```
 
-Inicie un entorno virtual:
-```
-pipenv install
-```
-Esto creará un entorno virtual llamado my_project en la carpeta .venv.
+Edite `.env` y configure, como mínimo, `SECRET_KEY`, `DEV_DATABASE_URI`, los modelos de Ollama y los orígenes permitidos por CORS.
 
-Para iniciar el entorno virtual, ejecute el siguiente comando:
+Descargue los modelos configurados:
 
-```
-pipenv shell
-```
-Esto cambiará a la shell del entorno virtual.
-
-Para instalar paquetes en el entorno virtual, use el comando pipenv install:
-
-```
-pipenv install requests
-```
-Esto instalará el paquete requests en el entorno virtual.
-
-Para salir del entorno virtual, ejecute el siguiente comando:
-
-```
-exit
-```
-### Opciones de creación de entornos virtuales
-
-Pipenv ofrece varias opciones para crear entornos virtuales, como:
-
-Especificar la versión de Python:
-```
-pipenv install --python 3.9
-```
-Esto creará un entorno virtual con Python 3.10.
-
-Especificar el nombre del entorno virtual:
-```
-pipenv install --name my_env
-```
-Esto creará un entorno virtual llamado my_env.
-
-Especificar las dependencias:
-```
-pipenv install requests django
-```
-Esto instalará los paquetes requests y django en el entorno virtual.
-
-### Recomendaciones
-
-Se recomienda crear un entorno virtual para cada proyecto de Python. Esto ayudará a aislar las dependencias de cada proyecto y evitará conflictos.
-
-------
-
-## Variables de Entorno
-Variables de entorno básicas para la ejecución del Proyecto:
-
-+ *ENVIRONMENT*: Define el tipo de Entorno en el que se ejecuta el Proyecto. Ejem. DEV -> Desarrollo | PRO -> Producción
-+ [*SECRET_KEY*](https://flask.palletsprojects.com/en/2.3.x/config/#SECRET_KEY): Una clave secreta que se utilizará para firmar de forma segura la cookie de sesión y que las extensiones o su aplicación pueden utilizar para cualquier otra necesidad relacionada con la seguridad. Debe ser una cadena o bytes aleatorios largos.
-+ [*DEV_DATABASE_URI*](https://flask-sqlalchemy.palletsprojects.com/en/3.1.x/config/#flask_sqlalchemy.config.SQLALCHEMY_DATABASE_URI): El URI de conexión de la base de datos de **Desarrollo** utilizado para el motor predeterminado. Puede ser una cadena o una instancia de URL de SQLAlchemy.
-+ [*PROD_DATABASE_URI*](https://flask-sqlalchemy.palletsprojects.com/en/3.1.x/config/#flask_sqlalchemy.config.SQLALCHEMY_DATABASE_URI): El URI de conexión de la base de datos de **Producción** utilizado para el motor predeterminado. Puede ser una cadena o una instancia de URL de SQLAlchemy.
-+ [*JWT_SECRET_KEY*](https://flask-jwt-extended.readthedocs.io/en/stable/options.html#jwt-secret-key): La clave secreta utilizada para codificar y descodificar JWTs cuando se utiliza un algoritmo de firma simétrico (como HS). Debe ser una cadena larga aleatoria de bytes, aunque también se acepta unicode.
-+ [*JWT_ALGORITHM*](https://flask-jwt-extended.readthedocs.io/en/stable/options.html#JWT_ALGORITHM): Con qué algoritmo firmar el JWT. Ver [PyJWT](https://pyjwt.readthedocs.io/en/latest/algorithms.html) para los algoritmos disponibles.
-
-### Ejemplo de un archivo .env
-```
-ENVIRONMENT="DEV"
-SECRET_KEY="SUPER_SECRET_KEY"
-DEV_DATABASE_URI="postgresql+psycopg2://postgres:password@localhost:5432/template_flask"
-PROD_DATABASE_URI=""
-JWT_SECRET_KEY="SUPER_SECRET_KEY"
-JWT_ALGORITHM="RS256"
-CHROMA_PATH="./chroma_db" 
-COLLECTION_NAME="gadpm_documents"
-OLLAMA_HOST = "http://172.20.51.50:11434"
-EMBEDDING_MODEL="model-elaia-mistral"
+```bash
+ollama pull nomic-embed-text
+ollama pull deepseek-r1:8b
 ```
 
+Para una base nueva, `AUTO_CREATE_TABLES=true` crea las tablas durante el desarrollo. Para una base existente ejecute primero:
 
-> [!IMPORTANT]
-> Recuerda siempre cambiar la *SECRET_KEY* y *JWT_SECRET_KEY* por un Hash distinto para la implementación en Producción.
-> 
-> Además de no revelar dicho Hash de producción en el repositorio de Git.
-
-------
-
-## [Generación de Par de Claves (Privada y Pública) con OpenSSL](https://github.com/NicoSan13/Template_API-flask/files/13561466/generating_rsa_key_from_command.pdf)
-
-Encriptación de archivos con criptografía de clave pública
-
-#### Generar una clave RSA de 2048 bits
-
-Para generar un par de claves RSA pública y privada se usa el siguiente comando:
-
-```
-openssl genrsa -des3 -out private.pem 2048
+```bash
+psql "postgresql://USUARIO:CLAVE@HOST:5432/BASE" -f migrations/manual/001_add_roles_and_constraints.sql
 ```
 
-Esto genera un par de claves RSA de 2048 bits, las encripta con la contraseña que se ingresó y las escribe en un archivo. A continuación, se necesita extraer el archivo de clave pública. 
+Cree el primer administrador:
 
-#### Exportar la clave pública RSA a un archivo
-
-Para exportarla se usa el siguiente comando:
-
-```
-openssl rsa -in private.pem -outform PEM -pubout -out public.pem
+```bash
+pipenv run flask --app app create-admin
 ```
 
-A continuación, abra el archivo public.pem y asegúrese de que comience con ```-----BEGIN PUBLIC KEY-----```. Así es como sabe que este archivo es la clave pública del par y no una clave privada.
+Si ya existe un usuario que debe convertirse en administrador:
 
-Para verificar el archivo desde la línea de comandos, puede usar el comando ```less```:
+```bash
+pipenv run flask --app app promote-user --username NOMBRE
+```
 
-```less public.pem```
+Inicie la API:
 
-Al generar la Clave Privada, esta se genera encriptada. Para poder utilizarla con la libreria Flask_JWT se debe de desencriptar ya que [no cuenta con soporte para decodificar Claves Privada con passphrases](https://github.com/jpadilla/pyjwt/pull/199#issuecomment-325068235).
+```bash
+pipenv run python run.py
+```
 
-Para ello se debe usar el siguiente comando:
+El servicio estará disponible en `http://localhost:5000`.
 
-```openssl rsa -in private_key.pem -out private_dec_key.pem```
+## Pruebas automatizadas
 
-El archivo PEM resultante debe ser cargado como Clave Privada.
+Las pruebas usan SQLite, claves JWT temporales y servicios simulados; no modifican PostgreSQL ni ChromaDB:
 
-[Referencia de comandos CLI Open SSL](https://wiki.openssl.org/index.php/Command_Line_Utilities)
+```bash
+pipenv run python -m unittest discover -s tests -v
+```
 
-[Referencia de la Guia para generar el par de Claves RSA](https://rietta.com/blog/openssl-generating-rsa-key-from-command/)
+## Pruebas con Postman
 
-------
+Importe estos dos archivos:
 
-## Despliegue del API
+- `postman/API_IA_UTM.postman_collection.json`
+- `postman/API_IA_UTM.postman_environment.json`
 
-Para desplegar el API de Flask, primero debes de asegurarte que te encuentres dentro del Entorno Virtual (pipenv).
+Seleccione el entorno **API IA UTM - Local**, cambie `admin_password` y ejecute las solicitudes en orden. En la solicitud **06 - Subir PDF como administrador** debe seleccionar manualmente un PDF. Los scripts guardan automáticamente los tokens JWT.
 
-# Coming Soon....
+## Rutas
+
+| Método | Ruta | Acceso |
+|---|---|---|
+| GET | `/` | Público |
+| POST | `/auth/login` | Público, limitado |
+| DELETE | `/auth/logout` | Autenticado |
+| GET/POST/PUT/DELETE | `/user/*` | Administrador |
+| POST | `/document/` | Administrador, limitado |
+| GET | `/document/` | Autenticado |
+| GET | `/document/view?name=archivo.pdf` | Autenticado |
+| POST | `/rag/ask` | Autenticado, limitado |
+
+## Seguridad
+
+- Las claves JWT deben almacenarse fuera del repositorio y configurarse mediante `JWT_PRIVATE_KEY_PATH` y `JWT_PUBLIC_KEY_PATH`.
+- Los PDF cargados y la base Chroma están excluidos de Git.
+- En producción use un almacenamiento compartido para los límites, por ejemplo Redis mediante `RATELIMIT_STORAGE_URI`.
+- Las claves que estuvieron versionadas deben revocarse. Retirarlas del último commit no las elimina del historial; la limpieza del historial debe coordinarse antes de forzar cambios sobre el repositorio remoto.
+
+## Producción
+
+Configure `ENVIRONMENT=PROD`, `PROD_DATABASE_URI`, `AUTO_CREATE_TABLES=false`, claves nuevas y CORS restringido. Ejemplo de ejecución:
+
+```bash
+pipenv run gunicorn --workers 2 --bind 0.0.0.0:5000 "app:app"
+```

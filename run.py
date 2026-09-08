@@ -1,9 +1,7 @@
+"""Punto de entrada para desarrollo local."""
+
 from app import app
-from os import path
-from dotenv import load_dotenv
 
-basedir = path.abspath(path.dirname(__file__))
-load_dotenv(path.join(basedir, ".env"))
 
-if __name__ == "_main_":
-    app.run()
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)

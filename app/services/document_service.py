@@ -1,201 +1,132 @@
-# # import os
-# import hashlib
-# from werkzeug.utils import secure_filename
-# from app.services.embedding_service import EmbeddingService
-# from app.services.chroma_service import ChromaService
-# from app.config import config
-# from app.extensions import logger_app
+"""Almacenamiento e indexación segura de documentos PDF."""
 
-
-# class DocumentService:
-#     def __init__(self):
-#         self.pdfs_directory = config.UPLOAD_FOLDER
-#         os.makedirs(self.pdfs_directory, exist_ok=True)
-
-#         self.embedding_service = EmbeddingService()
-#         self.chroma_service = ChromaService()
-
-#     def _calculate_hash_from_content(self, content: bytes) -> str:
-#         return hashlib.md5(content).hexdigest()
-
-#     def save_pdf(self, file):
-#         """
-#         Guarda PDF si no es duplicado, retorna path o None
-#         """
-#         filename = secure_filename(file.filename)
-#         content = file.read()
-#         file_hash = self._calculate_hash_from_content(content)
-
-#         for existing in os.listdir(self.pdfs_directory):
-#             existing_path = os.path.join(self.pdfs_directory, existing)
-#             with open(existing_path, "rb") as f:
-#                 existing_hash = hashlib.md5(f.read()).hexdigest()
-#             if file_hash == existing_hash:
-#                 logger_app.info(f"Documento duplicado detectado: {filename}")
-#                 return None
-
-#         file_path = os.path.join(self.pdfs_directory, filename)
-#         with open(file_path, "wb") as f:
-#             f.write(content)
-
-#         logger_app.info(f"Documento guardado: {file_path}")
-#         return file_path
-
-#     def upload_and_vectorize(self, file):
-#         try:
-#             saved_path = self.save_pdf(file)
-#             if saved_path is None:
-#                 return {"status": "duplicate", "message": "El documento ya existe"}
-
-#             # Generamos chunks (textos) y metadatos
-#             chunks, metadatas = self.embedding_service.generate_embeddings(saved_path)
-
-#             # Añadimos los textos a Chroma (él calcula embeddings automáticamente)
-#             self.chroma_service.add_embeddings(chunks, metadatas)
-
-#             return {
-#                 "status": "success",
-#                 "message": "Documento subido y vectorizado correctamente",
-#                 "file_path": saved_path,
-#                 "num_chunks": len(chunks),
-#             }
-
-#         except Exception as e:
-#             logger_app.error(f"Error en upload_and_vectorize: {str(e)}")
-#             return {
-#                 "status": "error",
-#                 "message": "Ocurrió un error al vectorizar el documento",
-#                 "detail": str(e),
-#             }
-
-#     def list_documents(self, page=1, per_page=10):
-#         files = os.listdir(self.pdfs_directory)
-#         files.sort()
-#         total = len(files)
-#         start = (page - 1) * per_page
-#         end = start + per_page
-#         return {
-#             "page": page,
-#             "per_page": per_page,
-#             "total": total,
-#             "documents": files[start:end],
-#         }
-
-import os
 import hashlib
+import os
+import tempfile
+from pathlib import Path
+
 from werkzeug.utils import secure_filename
-from app.services.embedding_service import EmbeddingService
-from app.services.chroma_service import ChromaService
+
 from app.config import config
 from app.extensions import logger_app
+from app.services.chroma_service import ChromaService
+from app.services.embedding_service import EmbeddingService
 
 
 class DocumentService:
-    def __init__(self):
-        # Crear directorio de almacenamiento de PDFs si no existe
-        self.pdfs_directory = config.UPLOAD_FOLDER
-        os.makedirs(self.pdfs_directory, exist_ok=True)
+    def __init__(self, upload_folder=None, embedding_service=None, chroma_service=None):
+        self.pdfs_directory = Path(upload_folder or config.UPLOAD_FOLDER).resolve()
+        self.pdfs_directory.mkdir(parents=True, exist_ok=True)
+        self.embedding_service = embedding_service or EmbeddingService()
+        self.chroma_service = chroma_service or ChromaService()
 
-        # Inicialización de servicios
-        self.embedding_service = EmbeddingService()
-        self.chroma_service = ChromaService()
-
-    def _calculate_hash_from_content(self, content: bytes) -> str:
-        """
-        Calcula el hash SHA256 de un archivo para detectar duplicados.
-        """
+    @staticmethod
+    def _hash(content: bytes) -> str:
         return hashlib.sha256(content).hexdigest()
 
-    def save_pdf(self, file, original_filename=None):
-        """
-        Guarda el archivo PDF si no es duplicado, retorna la ruta del archivo guardado o None si es duplicado.
-        """
-        filename = original_filename or secure_filename(file.filename)
-        content = file.read()
-        file_hash = self._calculate_hash_from_content(content)
+    @staticmethod
+    def _file_hash(path: Path) -> str:
+        hasher = hashlib.sha256()
+        with path.open("rb") as file_handle:
+            for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
 
-        # Verificar si el archivo ya existe comparando el hash
-        for existing in os.listdir(self.pdfs_directory):
-            existing_path = os.path.join(self.pdfs_directory, existing)
-            with open(existing_path, "rb") as f:
-                existing_hash = hashlib.sha256(f.read()).hexdigest()
-            if file_hash == existing_hash:
-                logger_app.info(f"Documento duplicado detectado: {filename}")
-                return None
+    def _existing_hashes(self):
+        for path in self.pdfs_directory.glob("*.pdf"):
+            if path.is_file():
+                yield path, self._file_hash(path)
 
-        # Guardar el archivo si no es duplicado
-        file_path = os.path.join(self.pdfs_directory, filename)
-        with open(file_path, "wb") as f:
-            f.write(content)
-
-        logger_app.info(f"Documento guardado en: {file_path}")
-        return file_path
+    def _destination(self, filename: str, document_hash: str) -> Path:
+        candidate = self.pdfs_directory / filename
+        if not candidate.exists():
+            return candidate
+        stem, suffix = candidate.stem, candidate.suffix
+        return self.pdfs_directory / f"{stem}-{document_hash[:8]}{suffix}"
 
     def upload_and_vectorize(self, file, original_filename=None):
-        """
-        Sube y vectoriza el documento PDF.
-        """
+        filename = secure_filename(original_filename or file.filename or "")
+        if not filename or not filename.lower().endswith(".pdf"):
+            raise ValueError("Solo se aceptan archivos PDF.")
+
+        content = file.read()
+        if not content.startswith(b"%PDF-"):
+            raise ValueError("El contenido no corresponde a un PDF válido.")
+
+        document_hash = self._hash(content)
+        for existing, existing_hash in self._existing_hashes():
+            if existing_hash == document_hash:
+                return {
+                    "status": "duplicate",
+                    "message": "El documento ya existe.",
+                    "filename": existing.name,
+                }
+
+        destination = self._destination(filename, document_hash)
+        temp_path = None
+        index_started = False
         try:
-            # Guardar el archivo y verificar si es duplicado
-            saved_path = self.save_pdf(file, original_filename)
-            if saved_path is None:
-                return {"status": "duplicate", "message": "El documento ya existe"}
+            with tempfile.NamedTemporaryFile(
+                dir=self.pdfs_directory, suffix=".pdf.tmp", delete=False
+            ) as temporary:
+                temporary.write(content)
+                temp_path = Path(temporary.name)
 
-            # Generar los embeddings y metadatos
-            chunks, metadatas = self.embedding_service.generate_embeddings(saved_path)
+            texts, metadatas = self.embedding_service.generate_embeddings(str(temp_path))
+            if not texts:
+                raise ValueError("El PDF no contiene texto indexable.")
 
-            # Añadir embeddings a Chroma
-            self.chroma_service.add_embeddings(chunks, metadatas)
+            for index, metadata in enumerate(metadatas):
+                metadata["source"] = destination.name
+                metadata["filename"] = destination.name
+                metadata["document_hash"] = document_hash
+                metadata["chunk_index"] = index
+
+            ids = [f"{document_hash}:{index}" for index in range(len(texts))]
+            index_started = True
+            self.chroma_service.add_embeddings(texts, metadatas, ids=ids)
+            os.replace(temp_path, destination)
+            temp_path = None
 
             return {
                 "status": "success",
-                "message": "Documento subido y vectorizado correctamente",
-                "file_path": saved_path,
-                "num_chunks": len(chunks),
+                "message": "Documento subido y vectorizado correctamente.",
+                "filename": destination.name,
+                "document_hash": document_hash,
+                "num_chunks": len(texts),
             }
-
-        except Exception as e:
-            logger_app.error(f"Error en upload_and_vectorize: {str(e)}")
-            return {
-                "status": "error",
-                "message": "Ocurrió un error al vectorizar el documento",
-                "detail": str(e),
-            }
-
-    # def list_documents(self, page=1, per_page=10):
-    #     """
-    #     Lista documentos PDF con paginación.
-    #     """
-    #     files = os.listdir(self.pdfs_directory)
-    #     files.sort()  # Para ordenar alfabéticamente
-    #     total = len(files)
-
-    #     # Cálculo de los documentos a mostrar para paginación
-    #     start = (page - 1) * per_page
-    #     end = start + per_page
-    #     documents = files[start:end]
-
-    #     # Retorna un diccionario con la información de la paginación
-    #     return {
-    #         "page": page,
-    #         "per_page": per_page,
-    #         "total": total,
-    #         "documents": documents,
-    #     }
+        except Exception:
+            if index_started:
+                try:
+                    self.chroma_service.delete_by_document_hash(document_hash)
+                except Exception:
+                    logger_app.exception("No se pudo revertir la indexación del documento")
+            raise
+        finally:
+            if temp_path and temp_path.exists():
+                temp_path.unlink()
 
     def list_documents(self, page=1, per_page=10):
-        files = sorted(os.listdir(self.pdfs_directory))
-        total = len(files)
+        files = sorted(
+            path for path in self.pdfs_directory.glob("*.pdf") if path.is_file()
+        )
         start = (page - 1) * per_page
-        end = start + per_page
-        docs = []
-        for fname in files[start:end]:
-            fpath = os.path.join(self.pdfs_directory, fname)
-            stat = os.stat(fpath)
-            docs.append(
-                {
-                    "filename": fname,
-                    "modified_at": stat.st_mtime,  # epoch seconds
-                }
-            )
-        return {"page": page, "per_page": per_page, "total": total, "documents": docs}
+        documents = [
+            {"filename": path.name, "modified_at": path.stat().st_mtime}
+            for path in files[start : start + per_page]
+        ]
+        return {
+            "page": page,
+            "per_page": per_page,
+            "total": len(files),
+            "documents": documents,
+        }
+
+    def resolve_document(self, name: str):
+        safe_name = secure_filename(name)
+        if safe_name != name or not safe_name.lower().endswith(".pdf"):
+            return None
+        path = (self.pdfs_directory / safe_name).resolve()
+        if path.parent != self.pdfs_directory or not path.is_file():
+            return None
+        return path

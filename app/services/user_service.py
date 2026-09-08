@@ -1,67 +1,66 @@
-from app.extensions import db, bcrypt_instance
+"""Operaciones de usuarios."""
+
+from sqlalchemy.exc import IntegrityError
+
+from app.extensions import bcrypt_instance, db
 from app.models.user import User
 from app.schemas.user_schema import UserSchema
 
 
-def exists(username: str):
-    user_object = (
-        db.session.query(User)
-        .filter(User.username == username, User.status == True)
-        .first()
-    )
-    if user_object is not None:
-        return True
-    else:
-        return False
-
-
-def get(id: int):
-    user_object = (
-        db.session.query(User).filter(User.id == id, User.status == True).first()
-    )
-    user_dict = UserSchema(exclude=("password",)).dump(user_object)
-    return user_dict
+def get(user_id: int):
+    user = db.session.query(User).filter_by(id=user_id, status=True).first()
+    return UserSchema().dump(user) if user else None
 
 
 def get_all():
-    user_objects = db.session.query(User).filter(User.status == True).all()
-    user_list = UserSchema(exclude=("password",), many=True).dump(user_objects)
-    return user_list
+    users = db.session.query(User).filter_by(status=True).order_by(User.id).all()
+    return UserSchema(many=True).dump(users)
 
 
-def create(username: str, password: str):
-    if exists(username):
-        return None
-    # password_hash = bcrypt_instance.hashpw(password.encode('utf8'), bcrypt_instance.gensalt())
-    # user_object = User(username, password_hash.decode('utf8'))
-    user_object = User(
-        username, bcrypt_instance.generate_password_hash(password).decode("utf8")
+def create(username: str, password: str, role: str = "user"):
+    if db.session.query(User.id).filter_by(username=username).first():
+        return None, "El nombre de usuario ya existe."
+
+    user = User(
+        username=username,
+        password=bcrypt_instance.generate_password_hash(password).decode("utf-8"),
+        role=role,
     )
-    db.session.add(user_object)
+    try:
+        db.session.add(user)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return None, "El nombre de usuario ya existe."
+    return UserSchema().dump(user), None
+
+
+def update(user_id: int, username: str, password: str, role: str):
+    user = db.session.query(User).filter_by(id=user_id, status=True).first()
+    if user is None:
+        return None, "Usuario no encontrado."
+
+    duplicate = db.session.query(User.id).filter(
+        User.username == username, User.id != user_id
+    ).first()
+    if duplicate:
+        return None, "El nombre de usuario ya existe."
+
+    user.username = username
+    user.password = bcrypt_instance.generate_password_hash(password).decode("utf-8")
+    user.role = role
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return None, "El nombre de usuario ya existe."
+    return UserSchema().dump(user), None
+
+
+def delete(user_id: int):
+    user = db.session.query(User).filter_by(id=user_id, status=True).first()
+    if user is None:
+        return False, "Usuario no encontrado."
+    user.status = False
     db.session.commit()
-    user_dict = UserSchema(exclude=("password",)).dump(user_object)
-    return user_dict
-
-
-def update(id: int, username: str, password: str):
-    user_object = (
-        db.session.query(User).filter(User.id == id, User.status == True).first()
-    )
-    user_object.username = username
-    user_object.password = bcrypt_instance.generate_password_hash(password).decode(
-        "utf8"
-    )
-    db.session.commit()
-    user_dict = UserSchema(exclude=("password",)).dump(user_object)
-    return user_dict
-
-
-def delete(id: int):
-    user_object = (
-        db.session.query(User).filter(User.id == id, User.status == True).first()
-    )
-    if user_object is None:
-        return (False, "Usuario no encontrado")
-    user_object.status = False
-    db.session.commit()
-    return (True, "Usuario eliminado")
+    return True, "Usuario eliminado."

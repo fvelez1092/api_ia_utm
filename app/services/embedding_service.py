@@ -77,6 +77,9 @@ class EmbeddingService:
             # Estandarizar nombre de la página
             if "page" not in meta and "page_number" in meta:
                 meta["page"] = meta.get("page_number")
+            # PDFPlumber usa índices desde cero; la API presenta páginas desde uno.
+            if isinstance(meta.get("page"), int):
+                meta["page"] += 1
             c.metadata = meta
         return chunks
 

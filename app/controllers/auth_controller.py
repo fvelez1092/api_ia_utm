@@ -1,32 +1,35 @@
 from flask import Blueprint, request
-from flask_jwt_extended import jwt_required, get_jwt
-from app.utils.response import create_response
-from app.services import auth_service
+from flask_jwt_extended import get_jwt, jwt_required
+
 from app.schemas.auth_schema import AuthSchema
+from app.extensions import limiter
+from app.services import auth_service
+from app.utils.response import create_response
+
 
 auth_blueprint = Blueprint("Auth", __name__, url_prefix="/auth")
-"""Entidad - Autenticación"""
 
 
-@auth_blueprint.route("/login", methods=["POST"])
+@auth_blueprint.post("/login")
+@limiter.limit("10 per minute")
 def login():
-    json_data = request.get_json(force=True)
-    json_data = AuthSchema().load(json_data)
-    auth_data = auth_service.login(json_data["username"], json_data["password"])
+    if not request.is_json:
+        return create_response(
+            "error", message="Se requiere JSON.", status_code=415
+        )
+    credentials = AuthSchema().load(request.get_json(silent=True) or {})
+    auth_data = auth_service.login(credentials["username"], credentials["password"])
     if auth_data is None:
         return create_response(
-            "error",
-            data={"message": "Usuario o contraseña incorrectos"},
-            status_code=401,
+            "error", message="Usuario o contraseña incorrectos.", status_code=401
         )
     return create_response("success", data={"auth": auth_data}, status_code=200)
 
 
-@auth_blueprint.route("/logout", methods=["DELETE"])
+@auth_blueprint.delete("/logout")
 @jwt_required()
 def logout():
-    jti = get_jwt()["jti"]
-    if auth_service.logout(jti):
-        return create_response("success", data={"message": "Logout"}, status_code=200)
-    else:
-        return create_response("error", data={"message": "Logout"}, status_code=500)
+    auth_service.logout(get_jwt()["jti"])
+    return create_response(
+        "success", data={"message": "Sesión cerrada."}, status_code=200
+    )
