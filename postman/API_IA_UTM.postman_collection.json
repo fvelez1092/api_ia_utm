@@ -96,7 +96,7 @@
         "method": "POST",
         "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{user_token}}", "type": "string"}]},
         "header": [{"key": "Content-Type", "value": "application/json"}],
-        "body": {"mode": "raw", "raw": "{\n  \"question\": \"¿Cuál es el tema principal del documento?\",\n  \"n_context\": 5,\n  \"use_scores\": true,\n  \"score_threshold\": 0.8\n}"},
+        "body": {"mode": "raw", "raw": "{\n  \"question\": \"¿Cuál es el tema principal del documento?\",\n  \"n_context\": 3,\n  \"use_scores\": true,\n  \"score_threshold\": 0.8\n}"},
         "url": "{{base_url}}/rag/ask"
       },
       "event": [{"listen": "test", "script": {"exec": ["pm.test('Consulta completada', () => pm.response.to.have.status(200));", "pm.test('Incluye respuesta', () => pm.expect(pm.response.json().data.answer).to.be.a('string'));"], "type": "text/javascript"}}]

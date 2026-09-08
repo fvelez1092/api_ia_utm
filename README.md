@@ -19,6 +19,8 @@ pipenv sync
 
 Edite `.env` y configure, como mínimo, `SECRET_KEY`, `DEV_DATABASE_URI`, los modelos de Ollama y los orígenes permitidos por CORS.
 
+Los ajustes de velocidad y calidad del RAG están explicados en [`docs/RAG_CONFIGURATION.md`](docs/RAG_CONFIGURATION.md).
+
 Descargue los modelos configurados:
 
 ```bash

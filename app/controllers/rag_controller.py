@@ -51,6 +51,24 @@ def _chroma_service():
     return current_app.extensions["chroma_service"]
 
 
+def _rag_service():
+    if "rag_service" not in current_app.extensions:
+        current_app.extensions["rag_service"] = RAGService(
+            model_name=current_app.config["OLLAMA_MODEL"],
+            base_url=current_app.config["OLLAMA_HOST"],
+            max_chars=current_app.config["RAG_MAX_CHARS"],
+            score_threshold=current_app.config["RAG_SCORE_THRESHOLD"],
+            reasoning=current_app.config["OLLAMA_REASONING"],
+            num_ctx=current_app.config["OLLAMA_NUM_CTX"],
+            num_predict=current_app.config["OLLAMA_NUM_PREDICT"],
+            keep_alive=current_app.config["OLLAMA_KEEP_ALIVE"],
+            temperature=current_app.config["OLLAMA_TEMPERATURE"],
+            top_k=current_app.config["OLLAMA_TOP_K"],
+            top_p=current_app.config["OLLAMA_TOP_P"],
+        )
+    return current_app.extensions["rag_service"]
+
+
 @rag_blueprint.post("/ask")
 @limiter.limit("30 per minute")
 @jwt_required()
@@ -86,7 +104,13 @@ def ask_question():
     except (TypeError, ValueError) as error:
         return create_response("error", message=str(error), status_code=400)
 
-    k = _safe_int(data.get("n_context", 5), default=5, min_v=1, max_v=15)
+    default_contexts = current_app.config["RAG_DEFAULT_CONTEXTS"]
+    k = _safe_int(
+        data.get("n_context", default_contexts),
+        default=default_contexts,
+        min_v=1,
+        max_v=current_app.config["RAG_MAX_CONTEXTS"],
+    )
     try:
         chroma = _chroma_service()
         if chroma.count() == 0:
@@ -107,12 +131,7 @@ def ask_question():
                 status_code=200,
             )
 
-        rag = RAGService(
-            model_name=current_app.config["OLLAMA_MODEL"],
-            base_url=current_app.config["OLLAMA_HOST"],
-            max_chars=current_app.config["RAG_MAX_CHARS"],
-            score_threshold=current_app.config["RAG_SCORE_THRESHOLD"],
-        )
+        rag = _rag_service()
         result = rag.generate_answer(
             question, retrieved, use_scores=use_scores, score_threshold=score_threshold
         )

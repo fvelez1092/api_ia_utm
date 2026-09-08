@@ -32,6 +32,13 @@ class RAGService:
         base_url=None,
         max_chars=None,
         score_threshold=None,
+        reasoning=False,
+        num_ctx=4096,
+        num_predict=160,
+        keep_alive="30m",
+        temperature=0.0,
+        top_k=20,
+        top_p=0.8,
     ):
         self.model_name = model_name or config.OLLAMA_MODEL
         self.base_url = base_url or config.OLLAMA_HOST
@@ -42,10 +49,13 @@ class RAGService:
         self.model = OllamaLLM(
             model=self.model_name,
             base_url=self.base_url,
-            temperature=0.0,
-            num_ctx=4096,
-            top_k=40,
-            top_p=0.9,
+            reasoning=reasoning,
+            temperature=temperature,
+            num_ctx=num_ctx,
+            num_predict=num_predict,
+            keep_alive=keep_alive,
+            top_k=top_k,
+            top_p=top_p,
         )
         self.prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
         self.parser = StrOutputParser()

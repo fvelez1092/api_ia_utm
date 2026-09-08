@@ -59,9 +59,20 @@ class Config:
     OLLAMA_HOST = environ.get("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_MODEL = environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
     EMBEDDING_MODEL = environ.get("EMBEDDING_MODEL", "nomic-embed-text")
-    RAG_MAX_CHARS = int(environ.get("RAG_MAX_CHARS", "8000"))
+    RAG_MAX_CHARS = int(environ.get("RAG_MAX_CHARS", "4000"))
     RAG_SCORE_THRESHOLD = float(environ.get("RAG_SCORE_THRESHOLD", "0.8"))
     RAG_MAX_QUESTION_LENGTH = int(environ.get("RAG_MAX_QUESTION_LENGTH", "1000"))
+    RAG_DEFAULT_CONTEXTS = int(environ.get("RAG_DEFAULT_CONTEXTS", "3"))
+    RAG_MAX_CONTEXTS = int(environ.get("RAG_MAX_CONTEXTS", "10"))
+
+    # Rendimiento de generación en Ollama
+    OLLAMA_REASONING = _as_bool("OLLAMA_REASONING", False)
+    OLLAMA_NUM_CTX = int(environ.get("OLLAMA_NUM_CTX", "4096"))
+    OLLAMA_NUM_PREDICT = int(environ.get("OLLAMA_NUM_PREDICT", "160"))
+    OLLAMA_KEEP_ALIVE = environ.get("OLLAMA_KEEP_ALIVE", "30m")
+    OLLAMA_TEMPERATURE = float(environ.get("OLLAMA_TEMPERATURE", "0.0"))
+    OLLAMA_TOP_K = int(environ.get("OLLAMA_TOP_K", "20"))
+    OLLAMA_TOP_P = float(environ.get("OLLAMA_TOP_P", "0.8"))
 
     UPLOAD_FOLDER = _project_path(environ.get("UPLOAD_FOLDER", "./uploads"))
     ALLOWED_EXTENSIONS = {"pdf"}
