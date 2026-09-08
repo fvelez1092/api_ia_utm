@@ -1,7 +1,7 @@
 import math
 
 from flask import Blueprint, current_app, request
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import get_jwt, jwt_required
 
 from app.extensions import limiter, logger_app
 from app.services.chroma_service import ChromaService
@@ -19,12 +19,12 @@ def _safe_int(value, default, min_v=1, max_v=20):
         return default
 
 
-def _parse_bool(value):
+def _parse_bool(value, field="use_scores"):
     if isinstance(value, bool):
         return value
     if isinstance(value, str) and value.lower() in {"true", "false"}:
         return value.lower() == "true"
-    raise ValueError("'use_scores' debe ser true o false.")
+    raise ValueError(f"'{field}' debe ser true o false.")
 
 
 def _is_greeting(question: str) -> bool:
@@ -93,6 +93,9 @@ def ask_question():
 
     try:
         use_scores = _parse_bool(data.get("use_scores", True))
+        include_context = _parse_bool(
+            data.get("include_context", False), "include_context"
+        )
         threshold_value = data.get("score_threshold")
         score_threshold = (
             current_app.config["RAG_SCORE_THRESHOLD"]
@@ -103,6 +106,13 @@ def ask_question():
             raise ValueError("'score_threshold' debe estar entre 0 y 10.")
     except (TypeError, ValueError) as error:
         return create_response("error", message=str(error), status_code=400)
+
+    if include_context and get_jwt().get("role") != "admin":
+        return create_response(
+            "error",
+            message="El contexto de diagnóstico requiere permisos de administrador.",
+            status_code=403,
+        )
 
     default_contexts = current_app.config["RAG_DEFAULT_CONTEXTS"]
     k = _safe_int(
@@ -133,7 +143,11 @@ def ask_question():
 
         rag = _rag_service()
         result = rag.generate_answer(
-            question, retrieved, use_scores=use_scores, score_threshold=score_threshold
+            question,
+            retrieved,
+            use_scores=use_scores,
+            score_threshold=score_threshold,
+            include_excerpts=include_context,
         )
         return create_response("success", data=result, status_code=200)
     except Exception:

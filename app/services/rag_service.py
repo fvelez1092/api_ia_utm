@@ -97,7 +97,7 @@ class RAGService:
             "page": page,
         }
 
-    def _format_context(self, documents):
+    def _format_context(self, documents, include_excerpts=False):
         parts, sources, total = [], [], 0
         for index, document in enumerate(documents, start=1):
             page_text = (
@@ -121,6 +121,11 @@ class RAGService:
                         if document.get("distance") is not None
                         else {}
                     ),
+                    **(
+                        {"excerpt": document["text"][:500]}
+                        if include_excerpts
+                        else {}
+                    ),
                 }
             )
             if total >= self.max_chars:
@@ -133,6 +138,7 @@ class RAGService:
         documents_or_pairs: List[Union[Any, Tuple[Any, float]]],
         use_scores: bool = True,
         score_threshold: float = None,
+        include_excerpts: bool = False,
     ) -> Dict[str, Any]:
         threshold = self.score_threshold if score_threshold is None else score_threshold
         documents = []
@@ -153,7 +159,9 @@ class RAGService:
         if not normalized:
             return {"answer": "No lo sé.", "sources": []}
 
-        context, sources = self._format_context(normalized)
+        context, sources = self._format_context(
+            normalized, include_excerpts=include_excerpts
+        )
         answer = (self.prompt | self.model | self.parser).invoke(
             {"question": question.strip(), "context": context}
         ).strip()

@@ -20,6 +20,10 @@ El campo `n_context` de una petición reemplaza temporalmente `RAG_DEFAULT_CONTE
 }
 ```
 
+Para diagnosticar la recuperación, un administrador puede enviar
+`"include_context": true`. La respuesta incluirá un extracto de hasta 500 caracteres por
+fuente. No habilite esta opción en clientes públicos.
+
 ## Generación en Ollama
 
 | Variable | Valor inicial | Efecto |

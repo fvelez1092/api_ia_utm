@@ -24,10 +24,13 @@ class RAGServiceTestCase(unittest.TestCase):
             metadata={"filename": "reglamento.pdf", "page": 12},
         )
 
-        result = service.generate_answer("¿Cómo me gradúo?", [(document, 0.42)])
+        result = service.generate_answer(
+            "¿Cómo me gradúo?", [(document, 0.42)], include_excerpts=True
+        )
 
         self.assertEqual(result["answer"], "Debe aprobar el trabajo de titulación [1].")
         self.assertEqual(result["sources"][0]["distance"], 0.42)
+        self.assertIn("obtener el título", result["sources"][0]["excerpt"])
 
     def test_returns_unknown_when_all_documents_exceed_threshold(self):
         service = self._service()
