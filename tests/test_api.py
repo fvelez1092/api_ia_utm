@@ -166,6 +166,10 @@ class FakeChromaService:
     def __init__(self, fail=False):
         self.fail = fail
         self.deleted = []
+        self.reset_called = False
+        self.embedding_function = type(
+            "FakeEmbeddingFunction", (), {"embed_query": lambda self, text: [0.1]}
+        )()
 
     def add_embeddings(self, texts, metadatas, ids=None):
         if self.fail:
@@ -175,8 +179,22 @@ class FakeChromaService:
     def delete_by_document_hash(self, document_hash):
         self.deleted.append(document_hash)
 
+    def reset(self):
+        self.reset_called = True
+
 
 class DocumentServiceTestCase(unittest.TestCase):
+    def test_reindexes_existing_documents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "reglamento.pdf").write_bytes(b"%PDF-existing")
+            chroma = FakeChromaService()
+            service = DocumentService(directory, FakeEmbeddingService(), chroma)
+
+            result = service.reindex_all()
+
+            self.assertTrue(chroma.reset_called)
+            self.assertEqual(result, {"documents": 1, "chunks": 1})
+
     def test_success_is_atomic_and_renames_collision(self):
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "manual.pdf").write_bytes(b"%PDF-old")

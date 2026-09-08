@@ -122,6 +122,39 @@ class DocumentService:
             "documents": documents,
         }
 
+    def reindex_all(self):
+        """Reconstruye Chroma desde los PDF conservados en uploads."""
+        prepared = []
+        for path in sorted(self.pdfs_directory.glob("*.pdf")):
+            if not path.is_file():
+                continue
+            document_hash = self._file_hash(path)
+            texts, metadatas = self.embedding_service.generate_embeddings(str(path))
+            if not texts:
+                logger_app.warning("Se omitió el PDF sin texto: %s", path.name)
+                continue
+            for index, metadata in enumerate(metadatas):
+                metadata["source"] = path.name
+                metadata["filename"] = path.name
+                metadata["document_hash"] = document_hash
+                metadata["chunk_index"] = index
+            ids = [f"{document_hash}:{index}" for index in range(len(texts))]
+            prepared.append((path.name, texts, metadatas, ids))
+
+        if not prepared:
+            raise ValueError("No hay documentos PDF con texto para reindexar.")
+
+        # Comprueba que el nuevo modelo responde antes de reemplazar el índice anterior.
+        self.chroma_service.embedding_function.embed_query("prueba de conexión")
+        self.chroma_service.reset()
+        total_chunks = 0
+        for filename, texts, metadatas, ids in prepared:
+            total_chunks += self.chroma_service.add_embeddings(
+                texts, metadatas, ids=ids
+            )
+            logger_app.info("Documento reindexado: %s (%s chunks)", filename, len(texts))
+        return {"documents": len(prepared), "chunks": total_chunks}
+
     def resolve_document(self, name: str):
         safe_name = secure_filename(name)
         if safe_name != name or not safe_name.lower().endswith(".pdf"):

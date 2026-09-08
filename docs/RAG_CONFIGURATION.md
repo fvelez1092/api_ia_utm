@@ -11,6 +11,17 @@ Los valores se cambian en `.env`. Reinicie Flask después de modificar ese archi
 | `RAG_MAX_CHARS` | `4000` | Máximo de caracteres enviados al modelo. Un valor menor responde más rápido. |
 | `RAG_SCORE_THRESHOLD` | `0.8` | Distancia máxima aceptada. Un valor menor es más estricto y puede descartar contexto útil. |
 
+La API no aplica el filtro de distancia de forma predeterminada. Envíe `"use_scores": true`
+solo cuando el umbral haya sido calibrado con los documentos y el modelo de embeddings actuales.
+
+Para documentos universitarios en español se recomienda `EMBEDDING_MODEL=bge-m3`. Después de
+cambiar el modelo es obligatorio reconstruir el índice, porque vectores generados por modelos
+distintos no son compatibles:
+
+```bash
+pipenv run flask --app app reindex-documents
+```
+
 El campo `n_context` de una petición reemplaza temporalmente `RAG_DEFAULT_CONTEXTS`:
 
 ```json

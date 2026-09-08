@@ -92,6 +92,22 @@ def create_app(test_config=None) -> Flask:
         db.session.commit()
         click.echo(f"Usuario '{username}' promovido a administrador.")
 
+    @app.cli.command("reindex-documents")
+    def reindex_documents():
+        """Reconstruye el índice vectorial usando los PDF existentes."""
+        from app.services.document_service import DocumentService
+
+        try:
+            result = DocumentService(
+                upload_folder=app.config["UPLOAD_FOLDER"]
+            ).reindex_all()
+        except Exception as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(
+            f"Reindexación completa: {result['documents']} documentos, "
+            f"{result['chunks']} fragmentos."
+        )
+
     return app
 
 

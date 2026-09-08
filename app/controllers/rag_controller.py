@@ -92,7 +92,7 @@ def ask_question():
         )
 
     try:
-        use_scores = _parse_bool(data.get("use_scores", True))
+        use_scores = _parse_bool(data.get("use_scores", False))
         include_context = _parse_bool(
             data.get("include_context", False), "include_context"
         )

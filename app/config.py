@@ -58,7 +58,7 @@ class Config:
 
     OLLAMA_HOST = environ.get("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_MODEL = environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
-    EMBEDDING_MODEL = environ.get("EMBEDDING_MODEL", "nomic-embed-text")
+    EMBEDDING_MODEL = environ.get("EMBEDDING_MODEL", "bge-m3")
     RAG_MAX_CHARS = int(environ.get("RAG_MAX_CHARS", "4000"))
     RAG_SCORE_THRESHOLD = float(environ.get("RAG_SCORE_THRESHOLD", "0.8"))
     RAG_MAX_QUESTION_LENGTH = int(environ.get("RAG_MAX_QUESTION_LENGTH", "1000"))
