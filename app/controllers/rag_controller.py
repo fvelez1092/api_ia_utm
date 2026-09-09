@@ -4,8 +4,8 @@ from flask import Blueprint, current_app, request
 from flask_jwt_extended import get_jwt, jwt_required
 
 from app.extensions import limiter, logger_app
-from app.services.chroma_service import ChromaService
 from app.services.rag_service import RAGService
+from app.services.service_registry import get_chroma_service
 from app.utils.response import create_response
 
 
@@ -41,14 +41,7 @@ def _is_greeting(question: str) -> bool:
 
 
 def _chroma_service():
-    if "chroma_service" not in current_app.extensions:
-        current_app.extensions["chroma_service"] = ChromaService(
-            persist_directory=current_app.config["CHROMA_PATH"],
-            collection_name=current_app.config["COLLECTION_NAME"],
-            embedding_model=current_app.config["EMBEDDING_MODEL"],
-            ollama_host=current_app.config["OLLAMA_HOST"],
-        )
-    return current_app.extensions["chroma_service"]
+    return get_chroma_service()
 
 
 def _rag_service():

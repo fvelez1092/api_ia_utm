@@ -1,8 +1,11 @@
 import io
 import os
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_ROOT = tempfile.mkdtemp(prefix="api-ia-utm-tests-")
@@ -100,6 +103,69 @@ class ApiTestCase(unittest.TestCase):
             self.client.post("/rag/ask", json={"question": "hola"}).status_code,
             401,
         )
+
+    def test_document_view_never_returns_an_empty_304_response(self):
+        pdf_path = Path(TEST_ROOT, "view-test.pdf")
+        pdf_content = b"%PDF-1.4\n%%EOF"
+        pdf_path.write_bytes(pdf_content)
+
+        class ViewDocumentService:
+            @staticmethod
+            def resolve_document(name):
+                return pdf_path if name == pdf_path.name else None
+
+        previous_service = app.extensions["document_service"]
+        app.extensions["document_service"] = ViewDocumentService()
+        try:
+            first = self.client.get(
+                f"/document/view?name={pdf_path.name}",
+                headers=self._auth(self.user_token),
+            )
+            second = self.client.get(
+                f"/document/view?name={pdf_path.name}",
+                headers={**self._auth(self.user_token), "If-None-Match": '"cached"'},
+            )
+        finally:
+            app.extensions["document_service"] = previous_service
+            pdf_path.unlink(missing_ok=True)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data, pdf_content)
+        self.assertEqual(second.data, pdf_content)
+        self.assertEqual(second.headers["Cache-Control"], "no-store, private")
+        self.assertNotIn("ETag", second.headers)
+
+    def test_chroma_service_is_initialized_once_under_concurrency(self):
+        from app.services.service_registry import get_chroma_service
+
+        previous_service = app.extensions.pop("chroma_service", None)
+        created = []
+
+        def create_chroma(**kwargs):
+            time.sleep(0.05)
+            instance = object()
+            created.append((instance, kwargs))
+            return instance
+
+        def load_service():
+            with app.app_context():
+                return get_chroma_service()
+
+        try:
+            with patch(
+                "app.services.service_registry.ChromaService",
+                side_effect=create_chroma,
+            ):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    services = list(executor.map(lambda _: load_service(), range(2)))
+        finally:
+            app.extensions.pop("chroma_service", None)
+            if previous_service is not None:
+                app.extensions["chroma_service"] = previous_service
+
+        self.assertEqual(len(created), 1)
+        self.assertIs(services[0], services[1])
 
     def test_regular_user_cannot_manage_users(self):
         response = self.client.post(

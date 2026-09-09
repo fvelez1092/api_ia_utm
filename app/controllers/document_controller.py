@@ -1,9 +1,8 @@
-from flask import Blueprint, current_app, request, send_from_directory
+from flask import Blueprint, request, send_from_directory
 from flask_jwt_extended import jwt_required
 
 from app.extensions import limiter, logger_app
-from app.services.chroma_service import ChromaService
-from app.services.document_service import DocumentService
+from app.services.service_registry import get_document_service
 from app.utils.auth import admin_required
 from app.utils.response import create_response
 
@@ -12,19 +11,7 @@ document_blueprint = Blueprint("Document", __name__, url_prefix="/document")
 
 
 def _service():
-    if "document_service" not in current_app.extensions:
-        if "chroma_service" not in current_app.extensions:
-            current_app.extensions["chroma_service"] = ChromaService(
-                persist_directory=current_app.config["CHROMA_PATH"],
-                collection_name=current_app.config["COLLECTION_NAME"],
-                embedding_model=current_app.config["EMBEDDING_MODEL"],
-                ollama_host=current_app.config["OLLAMA_HOST"],
-            )
-        current_app.extensions["document_service"] = DocumentService(
-            upload_folder=current_app.config["UPLOAD_FOLDER"],
-            chroma_service=current_app.extensions["chroma_service"],
-        )
-    return current_app.extensions["document_service"]
+    return get_document_service()
 
 
 @document_blueprint.post("/")
@@ -128,11 +115,15 @@ def view_document():
     path = _service().resolve_document(name)
     if path is None:
         return create_response("error", message="Documento no encontrado.", status_code=404)
-    return send_from_directory(
+    response = send_from_directory(
         directory=str(path.parent),
         path=path.name,
         mimetype="application/pdf",
         as_attachment=False,
-        conditional=True,
+        conditional=False,
+        etag=False,
         max_age=0,
     )
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
