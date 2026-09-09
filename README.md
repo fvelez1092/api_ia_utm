@@ -82,6 +82,9 @@ Seleccione el entorno **API IA UTM - Local**, cambie `admin_password` y ejecute 
 | POST | `/document/` | Administrador, limitado |
 | GET | `/document/` | Autenticado |
 | GET | `/document/view?name=archivo.pdf` | Autenticado |
+| GET | `/document/stats` | Autenticado |
+| POST | `/document/reindex` | Administrador, limitado |
+| DELETE | `/document/<nombre>` | Administrador |
 | POST | `/rag/ask` | Autenticado, limitado |
 
 ## Seguridad

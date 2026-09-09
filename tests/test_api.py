@@ -44,6 +44,23 @@ class FakeDocumentService:
     def resolve_document(self, name):
         return None
 
+    def stats(self):
+        return {
+            "documents": 2,
+            "indexed_chunks": 12,
+            "total_size_bytes": 2048,
+            "embedding_model": "bge-m3",
+            "collection_name": "test",
+        }
+
+    def reindex_all(self):
+        return {"documents": 2, "chunks": 12}
+
+    def delete_document(self, name):
+        if name == "missing.pdf":
+            return None
+        return {"filename": name, "document_hash": "abc"}
+
 
 class ApiTestCase(unittest.TestCase):
     def setUp(self):
@@ -131,6 +148,35 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertEqual(traversal.status_code, 404)
 
+    def test_document_management_endpoints(self):
+        stats = self.client.get(
+            "/document/stats", headers=self._auth(self.user_token)
+        )
+        self.assertEqual(stats.status_code, 200)
+        self.assertEqual(stats.get_json()["data"]["indexed_chunks"], 12)
+
+        denied_reindex = self.client.post(
+            "/document/reindex", headers=self._auth(self.user_token)
+        )
+        self.assertEqual(denied_reindex.status_code, 403)
+        reindex = self.client.post(
+            "/document/reindex", headers=self._auth(self.admin_token)
+        )
+        self.assertEqual(reindex.status_code, 200)
+
+        denied_delete = self.client.delete(
+            "/document/reglamento.pdf", headers=self._auth(self.user_token)
+        )
+        self.assertEqual(denied_delete.status_code, 403)
+        deleted = self.client.delete(
+            "/document/reglamento.pdf", headers=self._auth(self.admin_token)
+        )
+        self.assertEqual(deleted.status_code, 200)
+        missing = self.client.delete(
+            "/document/missing.pdf", headers=self._auth(self.admin_token)
+        )
+        self.assertEqual(missing.status_code, 404)
+
     def test_rag_validates_boolean_and_handles_greeting(self):
         invalid = self.client.post(
             "/rag/ask",
@@ -184,6 +230,19 @@ class FakeChromaService:
 
 
 class DocumentServiceTestCase(unittest.TestCase):
+    def test_deletes_file_and_its_embeddings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "reglamento.pdf")
+            path.write_bytes(b"%PDF-existing")
+            chroma = FakeChromaService()
+            service = DocumentService(directory, FakeEmbeddingService(), chroma)
+
+            result = service.delete_document("reglamento.pdf")
+
+            self.assertEqual(result["filename"], "reglamento.pdf")
+            self.assertFalse(path.exists())
+            self.assertEqual(chroma.deleted, [result["document_hash"]])
+
     def test_reindexes_existing_documents(self):
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "reglamento.pdf").write_bytes(b"%PDF-existing")

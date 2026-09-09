@@ -3,6 +3,7 @@
 import hashlib
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from werkzeug.utils import secure_filename
@@ -121,6 +122,44 @@ class DocumentService:
             "total": len(files),
             "documents": documents,
         }
+
+    def stats(self):
+        """Resume el estado de los PDF y del índice vectorial."""
+        files = [
+            path for path in self.pdfs_directory.glob("*.pdf") if path.is_file()
+        ]
+        return {
+            "documents": len(files),
+            "indexed_chunks": self.chroma_service.count(),
+            "total_size_bytes": sum(path.stat().st_size for path in files),
+            "embedding_model": self.chroma_service.embedding_model,
+            "collection_name": self.chroma_service.collection_name,
+        }
+
+    def delete_document(self, name: str):
+        """Elimina un PDF y todos sus vectores, restaurándolo si Chroma falla."""
+        path = self.resolve_document(name)
+        if path is None:
+            return None
+
+        document_hash = self._file_hash(path)
+        pending_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.deleting")
+        os.replace(path, pending_path)
+        try:
+            self.chroma_service.delete_by_document_hash(document_hash)
+        except Exception:
+            os.replace(pending_path, path)
+            raise
+
+        try:
+            pending_path.unlink()
+        except OSError:
+            logger_app.exception(
+                "El PDF quedó pendiente de limpieza después de eliminar sus vectores: %s",
+                pending_path,
+            )
+            raise
+        return {"filename": path.name, "document_hash": document_hash}
 
     def reindex_all(self):
         """Reconstruye Chroma desde los PDF conservados en uploads."""

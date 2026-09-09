@@ -67,6 +67,60 @@ def list_documents():
     )
 
 
+@document_blueprint.get("/stats")
+@jwt_required()
+def document_stats():
+    try:
+        data = _service().stats()
+    except Exception:
+        logger_app.exception("Error al consultar estadísticas de documentos")
+        return create_response(
+            "error", message="No se pudieron consultar las estadísticas.", status_code=500
+        )
+    return create_response("success", data=data, status_code=200)
+
+
+@document_blueprint.post("/reindex")
+@limiter.limit("2 per hour")
+@admin_required()
+def reindex_documents():
+    try:
+        data = _service().reindex_all()
+    except ValueError as error:
+        return create_response("error", message=str(error), status_code=400)
+    except Exception:
+        logger_app.exception("Error al reindexar los documentos")
+        return create_response(
+            "error", message="No se pudieron reindexar los documentos.", status_code=500
+        )
+    return create_response(
+        "success",
+        data={**data, "message": "Documentos reindexados correctamente."},
+        status_code=200,
+    )
+
+
+@document_blueprint.delete("/<path:name>")
+@admin_required()
+def delete_document(name):
+    try:
+        result = _service().delete_document(name)
+    except Exception:
+        logger_app.exception("Error al eliminar el documento")
+        return create_response(
+            "error", message="No se pudo eliminar el documento.", status_code=500
+        )
+    if result is None:
+        return create_response(
+            "error", message="Documento no encontrado.", status_code=404
+        )
+    return create_response(
+        "success",
+        data={**result, "message": "Documento eliminado correctamente."},
+        status_code=200,
+    )
+
+
 @document_blueprint.get("/view")
 @jwt_required()
 def view_document():
