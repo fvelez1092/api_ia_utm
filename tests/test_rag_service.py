@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
-from app.services.rag_service import RAGService
+from app.services.rag_service import RAGService, SYSTEM_PROMPT
 
 
 class RAGServiceTestCase(unittest.TestCase):
@@ -39,6 +39,13 @@ class RAGServiceTestCase(unittest.TestCase):
         result = service.generate_answer("Pregunta", [(document, 1.5)])
 
         self.assertEqual(result, {"answer": "No lo sé.", "sources": []})
+
+    def test_prompt_forbids_external_generalizations(self):
+        self.assertIn("No uses conocimiento general ni información externa", SYSTEM_PROMPT)
+        self.assertIn("otras instituciones", SYSTEM_PROMPT)
+        self.assertIn("países", SYSTEM_PROMPT)
+        self.assertIn("puede variar según la institución o el país", SYSTEM_PROMPT)
+        self.assertIn("identificador [n]", SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":
