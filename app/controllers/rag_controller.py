@@ -1,7 +1,8 @@
 import math
+from functools import wraps
 
 from flask import Blueprint, current_app, request
-from flask_jwt_extended import get_jwt, jwt_required
+from flask_jwt_extended import get_jwt, verify_jwt_in_request
 
 from app.extensions import limiter, logger_app
 from app.services.rag_service import RAGService
@@ -10,6 +11,16 @@ from app.utils.response import create_response
 
 
 rag_blueprint = Blueprint("RAG", __name__, url_prefix="/rag")
+
+
+def _rag_auth_required(function):
+    @wraps(function)
+    def decorated(*args, **kwargs):
+        if current_app.config["RAG_AUTH_ENABLED"]:
+            verify_jwt_in_request()
+        return function(*args, **kwargs)
+
+    return decorated
 
 
 def _safe_int(value, default, min_v=1, max_v=20):
@@ -64,7 +75,7 @@ def _rag_service():
 
 @rag_blueprint.post("/ask")
 @limiter.limit("30 per minute")
-@jwt_required()
+@_rag_auth_required
 def ask_question():
     if not request.is_json:
         return create_response("error", message="Se requiere JSON.", status_code=415)
@@ -100,10 +111,13 @@ def ask_question():
     except (TypeError, ValueError) as error:
         return create_response("error", message=str(error), status_code=400)
 
-    if include_context and get_jwt().get("role") != "admin":
+    if include_context and (
+        not current_app.config["RAG_AUTH_ENABLED"]
+        or get_jwt().get("role") != "admin"
+    ):
         return create_response(
             "error",
-            message="El contexto de diagnóstico requiere permisos de administrador.",
+            message="El contexto de diagnóstico requiere autenticación de administrador.",
             status_code=403,
         )
 

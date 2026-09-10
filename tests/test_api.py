@@ -20,6 +20,7 @@ os.environ.update(
         "CHROMA_PATH": f"{TEST_ROOT}/chroma",
         "AUTO_CREATE_TABLES": "true",
         "RATELIMIT_ENABLED": "false",
+        "RAG_AUTH_ENABLED": "true",
     }
 )
 
