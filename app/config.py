@@ -64,7 +64,6 @@ class Config:
     RAG_MAX_QUESTION_LENGTH = int(environ.get("RAG_MAX_QUESTION_LENGTH", "1000"))
     RAG_DEFAULT_CONTEXTS = int(environ.get("RAG_DEFAULT_CONTEXTS", "3"))
     RAG_MAX_CONTEXTS = int(environ.get("RAG_MAX_CONTEXTS", "10"))
-    RAG_AUTH_ENABLED = _as_bool("RAG_AUTH_ENABLED", False)
 
     # Rendimiento de generación en Ollama
     OLLAMA_REASONING = _as_bool("OLLAMA_REASONING", False)
